@@ -21,7 +21,7 @@ export default async function handler(req) {
     });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'API key not configured.' }), {
       status: 500,
@@ -48,38 +48,43 @@ export default async function handler(req) {
     });
   }
 
-  // Build OpenAI messages array — system prompt goes as first message with role "system"
-  const openAiMessages = [
-    { role: 'system', content: system || '' },
-    ...messages,
-  ];
+  // Convert OpenAI-style messages to Gemini's { role, parts } format
+  // Gemini uses "model" instead of "assistant"
+  const geminiMessages = messages.map((msg) => ({
+    role: msg.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: msg.content }],
+  }));
+
+  const geminiPayload = {
+    system_instruction: system ? { parts: [{ text: system }] } : undefined,
+    contents: geminiMessages,
+    generationConfig: {
+      maxOutputTokens: 1000,
+      temperature: 0.7,
+    },
+  };
+
+  const GEMINI_MODEL = 'gemini-2.0-flash';
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
 
   try {
-    const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        max_tokens: 1000,
-        temperature: 0.7,
-        messages: openAiMessages,
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(geminiPayload),
     });
 
-    if (!openAiRes.ok) {
-      const err = await openAiRes.text();
-      console.error('OpenAI error:', err);
+    if (!geminiRes.ok) {
+      const err = await geminiRes.text();
+      console.error('Gemini error:', err);
       return new Response(JSON.stringify({ error: 'AI service error. Try again shortly.' }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const data = await openAiRes.json();
-    const reply = data.choices?.[0]?.message?.content ?? 'No response received.';
+    const data = await geminiRes.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No response received.';
 
     return new Response(JSON.stringify({ reply }), {
       status: 200,
