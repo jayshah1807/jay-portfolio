@@ -2722,16 +2722,16 @@ Reply using EXACTLY this format with these exact section headers. No extra text:
 SCORE: [number 0-100]
 VERDICT: [one line assessment]
 VERDICT_COLOR: [green OR gold OR red]
-MATCHED: [comma separated skills from the job that Jay has]
-PARTIAL: [comma separated skills Jay partially has]
-MISSING: [comma separated skills the job needs that Jay lacks]
+MATCHED: TypeScript, Python, Docker, AWS
+PARTIAL: GraphQL, React
+MISSING: Java, Kafka
 HIGHLIGHTS:
-- [specific Jay experience that matches a job requirement]
-- [another match]
-- [another match]
+- Led gRPC migration of 50+ endpoints matching the distributed systems requirement
+- Built ArgoCD pipelines matching the CI/CD automation requirement
 GAPS:
-- [gap or consideration]
-- [another gap]`;
+- No Kafka experience in background
+
+Use that exact format. Fill in real values based on the job description above.`;
 
     const r1 = await callAI(analysisPrompt, { maxTokens: 900, temperature: 0.1 });
     console.log('Analysis raw:', r1);
@@ -2740,23 +2740,15 @@ GAPS:
     renderJobFit(analysis);
 
     // ── CALL 2: cover letter (plain text, no parsing needed) ─
-    const clPrompt = `Write a professional cover letter for Jay Shah applying to this job.
+    const clPrompt = `Cover letter for Jay Shah. Plain text, 3 paragraphs only.
 
-JAY'S BACKGROUND (use only these — no education, no degrees):
-- 3 years at Crest Data building Google Chronicle SIEM/SOAR platform at enterprise scale
-- Migrated 50+ API endpoints REST to gRPC/TypeScript — zero downtime, dual-API support
-- Built CI/CD automation with Python/GitLab CI/ArgoCD cutting release time by 80%
-- Engineered Angular test harness for security modules (Parsers, UDM Search, Alerts, IOCs)
-- Built Splunk SPL dashboards for enterprise security operations
-- Tech stack: Python, TypeScript, Angular, gRPC, AWS, Docker, K8s, Linux, GitLab CI, SIEM
+Jay (no education mentions): 3 yrs at Crest Data on Google Chronicle SIEM/SOAR. Migrated 50+ REST endpoints to gRPC/TypeScript zero-downtime. CI/CD automation Python/GitLab/ArgoCD cut release time 80%. Angular E2E test harness for SIEM modules. Stack: Python, TypeScript, Angular, gRPC, AWS, Docker, Kubernetes, Linux.
 
-JOB DESCRIPTION:
-${jd}
+Job: ${jd}
 
-Write exactly 3 short paragraphs. Start with "Dear Hiring Manager,". End "Sincerely, Jay Shah".
-Mention 2-3 specific requirements from the JD. Professional tone. Plain text only.`;
+Start: "Dear Hiring Manager," — End: "Sincerely,\nJay Shah" — Reference 2 specific job requirements.`;
 
-    const r2 = await callAI(clPrompt, { maxTokens: 600, temperature: 0.3 });
+    const r2 = await callAI(clPrompt, { maxTokens: 1500, temperature: 0.3 });
     const coverLetter = r2.trim();
     const cw = document.getElementById('jfCoverWrap');
     const cl = document.getElementById('jfCoverLetter');
@@ -2796,26 +2788,63 @@ async function callAI(userPrompt, opts) {
 
 // Parse the plain-text format — no JSON, no fragile parsing
 function parsePlainText(raw) {
-  const line  = key => { const m = raw.match(new RegExp(key + ':[ \\t]*(.+)', 'i')); return m ? m[1].trim() : ''; };
-  const csv   = key => { const v = line(key); return v ? v.split(',').map(s => s.trim()).filter(Boolean) : []; };
-  const block = key => {
-    const m = raw.match(new RegExp(key + ':[ \\t]*\\n(([ \\t]*-[ \\t]*.+\\n?)+)', 'i'));
-    if (!m) return [];
-    return m[1].split('\n').map(s => s.replace(/^[ \t]*-[ \t]*/, '').trim()).filter(Boolean);
+  console.log('=== RAW GEMINI RESPONSE ===\n', raw);
+
+  // Extract a single-line value — tolerates brackets, quotes, any wrapper chars
+  const getLine = (...keys) => {
+    for (const k of keys) {
+      const m = raw.match(new RegExp(k + '[\\s_]*:[\\t ]*([^\\n]+)', 'i'));
+      if (m && m[1].trim()) return m[1].trim();
+    }
+    return '';
   };
 
-  return {
-    score:            parseInt(line('SCORE')) || 70,
-    verdict:          line('VERDICT')         || 'Analysis Complete',
-    verdict_color:    (line('VERDICT_COLOR') || 'gold').toLowerCase(),
-    matched_skills:   csv('MATCHED'),
-    partial_skills:   csv('PARTIAL'),
-    missing_skills:   csv('MISSING'),
-    match_highlights: block('HIGHLIGHTS'),
-    gaps:             block('GAPS'),
+  // Extract comma/semicolon separated list — strips brackets, quotes, bullets
+  const getCsv = (...keys) => {
+    const v = getLine(...keys);
+    if (!v) return [];
+    // Remove surrounding brackets like [Python, TypeScript]
+    const cleaned = v.replace(/^\[|\]$/g, '').trim();
+    return cleaned
+      .split(/,|;/)
+      .map(s => s.replace(/^[\s\-\*\u2022\[\]"'\`]+|[\s\-\*\u2022\[\]"'\`]+$/g, '').trim())
+      .filter(s => s.length > 1 && s.length < 60 && !s.match(/^(none|n\/a|null)$/i));
   };
+
+  // Extract a bullet-point block after a key heading
+  const getBlock = (...keys) => {
+    for (const k of keys) {
+      // Match heading line then capture following bullet lines
+      const m = raw.match(new RegExp(k + '[\\s_]*:[^\\n]*\\n((?:[^\\n]+\\n?){1,10})', 'i'));
+      if (m) {
+        const lines = m[1].split('\n')
+          .map(s => s.replace(/^[\t ]*[\-\*\u2022\d\.#>]+[\t ]*/, '').trim())
+          .filter(s => s.length > 5 && s.length < 200);
+        if (lines.length) return lines;
+      }
+    }
+    return [];
+  };
+
+  const scoreRaw  = getLine('SCORE', 'MATCH SCORE', 'OVERALL SCORE', 'FIT SCORE', 'OVERALL MATCH');
+  const vcRaw     = getLine('VERDICT_COLOR', 'VERDICT COLOR', 'COLOR');
+  const scoreNum  = parseInt(scoreRaw.replace(/[^\d]/g, '')) || 70;
+  const colorStr  = vcRaw.toLowerCase();
+  const vColor    = colorStr.includes('green') ? 'green' : colorStr.includes('red') ? 'red' : 'gold';
+
+  const result = {
+    score:            scoreNum,
+    verdict:          getLine('VERDICT', 'ASSESSMENT', 'SUMMARY', 'OVERALL VERDICT') || 'Analysis Complete',
+    verdict_color:    vColor,
+    matched_skills:   getCsv('MATCHED', 'MATCHED SKILLS', 'MATCHING SKILLS', 'SKILLS MATCHED', 'STRONG MATCH'),
+    partial_skills:   getCsv('PARTIAL', 'PARTIAL SKILLS', 'PARTIAL MATCH', 'SOME EXPERIENCE'),
+    missing_skills:   getCsv('MISSING', 'MISSING SKILLS', 'SKILLS MISSING', 'NOT MATCHED', 'GAPS IN SKILLS'),
+    match_highlights: getBlock('HIGHLIGHTS', 'MATCH HIGHLIGHTS', 'KEY MATCHES', 'STRENGTHS', 'EXPERIENCE MATCHES'),
+    gaps:             getBlock('GAPS', 'GAP', 'WEAKNESSES', 'CONSIDERATIONS', 'AREAS FOR GROWTH'),
+  };
+  console.log('=== PARSED RESULT ===', result);
+  return result;
 }
-
 function renderJobFit(r) {
   const results     = document.getElementById('jfResults');
   const placeholder = document.getElementById('jfPlaceholder');
