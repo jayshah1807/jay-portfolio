@@ -2672,11 +2672,11 @@ AWS Cloud Practitioner, Google Go Certified, Digital Marketing
 `;
 
 async function runJobFit() {
-  const input    = document.getElementById('jfInput');
-  const btn      = document.getElementById('jfBtn');
-  const btnText  = document.querySelector('.jf-btn-text');
-  const loader   = document.getElementById('jfLoader');
-  const results  = document.getElementById('jfResults');
+  const input       = document.getElementById('jfInput');
+  const btn         = document.getElementById('jfBtn');
+  const btnText     = document.querySelector('.jf-btn-text');
+  const loader      = document.getElementById('jfLoader');
+  const results     = document.getElementById('jfResults');
   const placeholder = document.getElementById('jfPlaceholder');
 
   const jd = input.value.trim();
@@ -2688,97 +2688,92 @@ async function runJobFit() {
 
   btn.disabled = true;
   btnText.style.display = 'none';
-  loader.style.display = 'inline';
+  loader.style.display  = 'inline';
   results.style.display = 'none';
   placeholder.style.display = 'none';
 
   try {
-    // ── CALL 1: structured analysis (score + skills + highlights) ──
-    const analysisPrompt = `You are a technical recruiter. Analyze candidate fit for this job.
+    // ── CALL 1: plain-text structured analysis (no JSON) ─────
+    const analysisPrompt = `You are a technical recruiter evaluating a candidate for a job.
 
-CANDIDATE: Jay Shah, Software Developer, 3+ years experience at Crest Data building Google Chronicle SIEM/SOAR platform.
+CANDIDATE: Jay Shah — Software Developer, 3+ years at Crest Data on Google Chronicle SIEM/SOAR platform.
 
-KEY EXPERIENCE:
-- Migrated 50+ REST endpoints to gRPC/TypeScript on Google Chronicle (zero downtime)
-- Built Angular component test harness for SIEM/SOAR (Parsers, UDM Search, Alerts, IOCs)
-- Automated CI/CD with Python/Shell/GitLab CI — cut release validation from hours to ~1hr
-- Deployed ArgoCD pipelines — eliminated 3-4hr upgrade windows via parallel rollouts
+EXPERIENCE:
+- Migrated 50+ REST endpoints to gRPC/TypeScript on Google Chronicle with zero downtime
+- Built Angular E2E test harness for SIEM/SOAR modules (Parsers, UDM Search, Alerts, IOCs, Event Rules)
+- Automated CI/CD with Python/Shell/GitLab CI — cut release validation from hours to ~1 hour
+- Deployed ArgoCD pipelines eliminating 3-4 hour upgrade windows
 - Built Splunk SPL dashboards for enterprise security operations
 - Refactored Angular data layer reducing API response times significantly
 
-SKILLS: Python, TypeScript, JavaScript, Go, Angular, React, gRPC, REST APIs, Node.js, AWS, Docker, Kubernetes, GitLab CI, ArgoCD, Linux, RTOS, Google Chronicle, SIEM, SOAR, Splunk SPL, UDM Search, Shell Script, SQL, Git
+TECH SKILLS:
+Python, TypeScript, JavaScript, Go, Embedded C, Shell Script, SQL,
+Angular, React, RxJS, gRPC Web, HTML5/CSS3,
+gRPC, REST APIs, Node.js, GraphQL,
+AWS, Docker, Kubernetes, GitLab CI, ArgoCD, Linux,
+Google Chronicle, SIEM, SOAR, Splunk SPL, UDM Search,
+Linux Kernel, RTOS, Git, Agile/Scrum, Jest
 
 JOB DESCRIPTION:
 ${jd}
 
-Return ONLY this JSON (no markdown, no extra text, no apostrophes in strings):
-{
-  "score": 82,
-  "verdict": "Strong Match - Production SIEM experience aligns directly",
-  "verdict_color": "green",
-  "matched_skills": ["Python", "TypeScript", "gRPC"],
-  "partial_skills": ["React"],
-  "missing_skills": ["Java"],
-  "match_highlights": [
-    "Led gRPC migration of 50+ endpoints matching distributed systems requirement",
-    "3 years production SIEM/SOAR matches security platform experience needed"
-  ],
-  "gaps": ["No Java experience mentioned"]
-}`;
+Reply using EXACTLY this format with these exact section headers. No extra text:
 
-    const r1 = await callAI(analysisPrompt, { maxTokens: 1200, temperature: 0.1 });
-    const analysis = parseAnalysis(r1);
+SCORE: [number 0-100]
+VERDICT: [one line assessment]
+VERDICT_COLOR: [green OR gold OR red]
+MATCHED: [comma separated skills from the job that Jay has]
+PARTIAL: [comma separated skills Jay partially has]
+MISSING: [comma separated skills the job needs that Jay lacks]
+HIGHLIGHTS:
+- [specific Jay experience that matches a job requirement]
+- [another match]
+- [another match]
+GAPS:
+- [gap or consideration]
+- [another gap]`;
 
-    // Render score + skills immediately so user sees progress
+    const r1 = await callAI(analysisPrompt, { maxTokens: 900, temperature: 0.1 });
+    console.log('Analysis raw:', r1);
+    const analysis = parsePlainText(r1);
+    console.log('Parsed analysis:', analysis);
     renderJobFit(analysis);
 
-    // ── CALL 2: cover letter separately ──────────────────────
+    // ── CALL 2: cover letter (plain text, no parsing needed) ─
     const clPrompt = `Write a professional cover letter for Jay Shah applying to this job.
 
-JAY SHAH BACKGROUND (use only these facts — do NOT mention education):
-- 3+ years at Crest Data building Google Chronicle SIEM/SOAR for enterprise clients
-- Migrated 50+ endpoints from REST to gRPC/TypeScript with zero downtime
-- Built automated CI/CD pipelines (Python, GitLab CI, ArgoCD) cutting release time 80%
-- Engineered Angular test harness covering Parsers, UDM Search, Alerts, IOCs
-- Built Splunk SPL dashboards for security operations monitoring
-- Tech stack: Python, TypeScript, Angular, gRPC, AWS, Docker, K8s, Linux, GitLab CI
+JAY'S BACKGROUND (use only these — no education, no degrees):
+- 3 years at Crest Data building Google Chronicle SIEM/SOAR platform at enterprise scale
+- Migrated 50+ API endpoints REST to gRPC/TypeScript — zero downtime, dual-API support
+- Built CI/CD automation with Python/GitLab CI/ArgoCD cutting release time by 80%
+- Engineered Angular test harness for security modules (Parsers, UDM Search, Alerts, IOCs)
+- Built Splunk SPL dashboards for enterprise security operations
+- Tech stack: Python, TypeScript, Angular, gRPC, AWS, Docker, K8s, Linux, GitLab CI, SIEM
 
 JOB DESCRIPTION:
 ${jd}
 
-Write exactly 3 paragraphs. Start with "Dear Hiring Manager,". End with "Sincerely,\nJay Shah".
-Reference 2-3 specific requirements from the job description.
-Professional tone. Do NOT mention university or degrees. Plain text only.`;
+Write exactly 3 short paragraphs. Start with "Dear Hiring Manager,". End "Sincerely, Jay Shah".
+Mention 2-3 specific requirements from the JD. Professional tone. Plain text only.`;
 
-    const r2 = await callAI(clPrompt, { maxTokens: 1500, temperature: 0.4 });
+    const r2 = await callAI(clPrompt, { maxTokens: 600, temperature: 0.3 });
     const coverLetter = r2.trim();
-
-    // Append cover letter to already-rendered results
     const cw = document.getElementById('jfCoverWrap');
     const cl = document.getElementById('jfCoverLetter');
-    if (cw && cl && coverLetter && coverLetter.length > 50) {
-      // Replace \n literals with actual newlines in case Gemini returned escaped ones
-      const formatted = coverLetter.replace(/\\n/g, '\n');
-      cl.textContent = formatted;
+    if (cw && cl && coverLetter.length > 80) {
+      cl.textContent = coverLetter;
       cw.style.display = 'block';
-    } else if (!coverLetter || coverLetter.length <= 50) {
-      // Show a fallback message so user knows it failed
-      if (cw && cl) {
-        cl.textContent = 'Cover letter generation failed. Please try again.';
-        cw.style.display = 'block';
-      }
     }
 
   } catch(e) {
     console.error('Job fit error:', e);
     placeholder.style.display = 'block';
     placeholder.innerHTML = '<div class="jf-placeholder-icon">⚠️</div>'
-      + '<div class="jf-placeholder-text">Analysis failed</div>'
-      + '<div class="jf-placeholder-sub" style="color:#ef476f;margin-top:.5rem;font-family:monospace;font-size:.75rem">' + e.message + '</div>';
+      + '<div class="jf-placeholder-text">Analysis failed — ' + e.message + '</div>';
   } finally {
     btn.disabled = false;
     btnText.style.display = 'inline';
-    loader.style.display = 'none';
+    loader.style.display  = 'none';
   }
 }
 
@@ -2788,200 +2783,136 @@ async function callAI(userPrompt, opts) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      system: opts.system || 'You are a technical recruiter AI. Follow the output format exactly as instructed.',
-      messages: [{ role: 'user', content: userPrompt }],
+      system:      opts.system || 'You are a technical recruiter AI. Follow the output format exactly.',
+      messages:    [{ role: 'user', content: userPrompt }],
       maxTokens:   opts.maxTokens   || 2048,
       temperature: opts.temperature ?? 0.2,
     })
   });
-  if (!res.ok) throw new Error('API error: ' + res.status);
+  if (!res.ok) throw new Error('API ' + res.status);
   const data = await res.json();
-  if (data.finishReason && data.finishReason !== 'STOP') {
-    console.warn('Response was truncated. finishReason:', data.finishReason);
-  }
   return data.reply || '';
 }
 
-function parseAnalysis(raw) {
-  // Strip markdown fences
-  let s = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-  // Extract { ... }
-  const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  if (a !== -1 && b !== -1) s = s.slice(a, b + 1);
-
-  // Try direct parse
-  try {
-    const obj = JSON.parse(s);
-    // Validate we got arrays back
-    if (!Array.isArray(obj.matched_skills)) obj.matched_skills = [];
-    if (!Array.isArray(obj.partial_skills))  obj.partial_skills = [];
-    if (!Array.isArray(obj.missing_skills))  obj.missing_skills = [];
-    if (!Array.isArray(obj.match_highlights)) obj.match_highlights = [];
-    if (!Array.isArray(obj.gaps))            obj.gaps = [];
-    return obj;
-  } catch(e) {
-    console.warn('Direct parse failed, using fallback. Error:', e.message);
-    console.warn('Raw response:', raw.substring(0, 500));
-  }
-
-  // Regex fallback
-  const getNum = k => { const m = s.match(new RegExp('"' + k + '"\\s*:\\s*(\\d+)')); return m ? parseInt(m[1]) : 0; };
-  const getStr = k => { const m = s.match(new RegExp('"' + k + '"\\s*:\\s*"([^"]*)"')); return m ? m[1] : ''; };
-  const getArr = k => {
-    const m = s.match(new RegExp('"' + k + '"\\s*:\\s*\\[([\\s\\S]*?)\\]'));
+// Parse the plain-text format — no JSON, no fragile parsing
+function parsePlainText(raw) {
+  const line  = key => { const m = raw.match(new RegExp(key + ':[ \\t]*(.+)', 'i')); return m ? m[1].trim() : ''; };
+  const csv   = key => { const v = line(key); return v ? v.split(',').map(s => s.trim()).filter(Boolean) : []; };
+  const block = key => {
+    const m = raw.match(new RegExp(key + ':[ \\t]*\\n(([ \\t]*-[ \\t]*.+\\n?)+)', 'i'));
     if (!m) return [];
-    return (m[1].match(/"((?:[^"\\]|\\.)*)"/g) || []).map(x => x.replace(/^"|"$/g,'').replace(/\\"/g,'"'));
+    return m[1].split('\n').map(s => s.replace(/^[ \t]*-[ \t]*/, '').trim()).filter(Boolean);
   };
-  return {
-    score:            getNum('score') || 70,
-    verdict:          getStr('verdict') || 'Analysis Complete',
-    verdict_color:    getStr('verdict_color') || 'gold',
-    matched_skills:   getArr('matched_skills'),
-    partial_skills:   getArr('partial_skills'),
-    missing_skills:   getArr('missing_skills'),
-    match_highlights: getArr('match_highlights'),
-    gaps:             getArr('gaps'),
-    cover_letter:     '',
-  };
-}
-
-
-function extractFieldsFallback(raw) {
-  function getNum(key) {
-    const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*(\\d+)'));
-    return m ? parseInt(m[1]) : 0;
-  }
-  function getStr(key) {
-    // grab value between first quote pair after the key
-    const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*"([^"]*)"'));
-    return m ? m[1] : '';
-  }
-  function getArr(key) {
-    const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*\\[([^\\]]*?)\\]'));
-    if (!m) return [];
-    return (m[1].match(/"([^"]*)"/g) || []).map(s => s.replace(/"/g,''));
-  }
-  // For cover_letter grab everything between cover_letter": " and the next "}
-  let cover = '';
-  const clMatch = raw.match(/"cover_letter"\s*:\s*"([\s\S]*?)(?="\s*\})/);
-  if (clMatch) cover = clMatch[1].replace(/\n/g,'\n');
 
   return {
-    score:            getNum('score'),
-    verdict:          getStr('verdict') || 'Analysis complete',
-    verdict_color:    getStr('verdict_color') || 'gold',
-    matched_skills:   getArr('matched_skills'),
-    partial_skills:   getArr('partial_skills'),
-    missing_skills:   getArr('missing_skills'),
-    match_highlights: getArr('match_highlights'),
-    gaps:             getArr('gaps'),
-    cover_letter:     cover,
+    score:            parseInt(line('SCORE')) || 70,
+    verdict:          line('VERDICT')         || 'Analysis Complete',
+    verdict_color:    (line('VERDICT_COLOR') || 'gold').toLowerCase(),
+    matched_skills:   csv('MATCHED'),
+    partial_skills:   csv('PARTIAL'),
+    missing_skills:   csv('MISSING'),
+    match_highlights: block('HIGHLIGHTS'),
+    gaps:             block('GAPS'),
   };
 }
 
 function renderJobFit(r) {
-  const results = document.getElementById('jfResults');
+  const results     = document.getElementById('jfResults');
   const placeholder = document.getElementById('jfPlaceholder');
   placeholder.style.display = 'none';
-  results.style.display = 'flex';
+  results.style.display     = 'flex';
 
-  // Score ring
-  const score = Math.min(100, Math.max(0, parseInt(r.score) || 0));
-  const circumference = 314;
-  const offset = circumference - (score / 100) * circumference;
-  const ring = document.getElementById('jfRingFill');
-  const numEl = document.getElementById('jfScoreNum');
-  const verdictEl = document.getElementById('jfVerdict');
-
-  // Color ring by score
-  const col = score >= 75 ? '#06d6a0' : score >= 50 ? '#ffd166' : '#ef476f';
-  ring.style.stroke = col;
-  ring.style.filter = `drop-shadow(0 0 8px ${col}88)`;
-
-  // Animate number
-  let cur = 0;
-  const step = score / 50;
-  const iv = setInterval(() => {
-    cur = Math.min(cur + step, score);
-    numEl.textContent = Math.floor(cur);
-    if (cur >= score) clearInterval(iv);
-  }, 30);
+  const score = Math.min(100, Math.max(0, r.score || 0));
+  const col   = score >= 75 ? '#06d6a0' : score >= 50 ? '#ffd166' : '#ef476f';
 
   // Animate ring
-  setTimeout(() => { ring.style.strokeDashoffset = offset; }, 100);
+  const ring = document.getElementById('jfRingFill');
+  if (ring) {
+    ring.style.stroke        = col;
+    ring.style.filter        = 'drop-shadow(0 0 8px ' + col + '88)';
+    setTimeout(() => { ring.style.strokeDashoffset = 314 - (score / 100) * 314; }, 100);
+  }
 
-  // Verdict
-  numEl.style.color = col;
-  document.querySelector('.jf-score-pct').style.color = col;
-  verdictEl.textContent = r.verdict || '';
-  verdictEl.style.color = col;
+  // Animate counter
+  const numEl = document.getElementById('jfScoreNum');
+  if (numEl) {
+    numEl.style.color = col;
+    let cur = 0;
+    const step = score / 50;
+    const iv = setInterval(() => {
+      cur = Math.min(cur + step, score);
+      numEl.textContent = Math.floor(cur);
+      if (cur >= score) clearInterval(iv);
+    }, 30);
+  }
+  const pctEl = document.querySelector('.jf-score-pct');
+  if (pctEl) pctEl.style.color = col;
 
-  // Breakdown
+  const verdictEl = document.getElementById('jfVerdict');
+  if (verdictEl) { verdictEl.textContent = r.verdict; verdictEl.style.color = col; }
+
+  // ── Build breakdown ───────────────────────────────────────
   const bd = document.getElementById('jfBreakdown');
+  if (!bd) return;
   bd.innerHTML = '';
 
-  if (r.match_highlights?.length) {
+  // Highlights
+  if (r.match_highlights && r.match_highlights.length) {
     const sec = document.createElement('div');
     sec.className = 'jf-bk-section';
     sec.innerHTML = '<div class="jf-bk-title">✅ Direct Experience Matches</div>';
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;flex-direction:column;gap:.4rem';
     r.match_highlights.forEach(h => {
       const d = document.createElement('div');
       d.style.cssText = 'font-size:.8rem;color:#a8d8e0;line-height:1.6;padding:.3rem 0;border-bottom:1px solid rgba(255,255,255,.04)';
       d.textContent = '→ ' + h;
-      row.appendChild(d);
+      sec.appendChild(d);
     });
-    sec.appendChild(row);
     bd.appendChild(sec);
   }
+
+  // Skill chips
+  const allSkills = [
+    ...(r.matched_skills || []).map(s => ({ label: s, cls: 'hit',     prefix: '✓ ' })),
+    ...(r.partial_skills  || []).map(s => ({ label: s, cls: 'partial', prefix: '~ ' })),
+    ...(r.missing_skills  || []).map(s => ({ label: s, cls: 'miss',    prefix: '✗ ' })),
+  ];
 
   const skillSec = document.createElement('div');
   skillSec.className = 'jf-bk-section';
   skillSec.style.marginTop = '1.2rem';
-  skillSec.innerHTML = '<div class="jf-bk-title">Skill Coverage</div>';
-  const chipRow = document.createElement('div');
-  chipRow.className = 'jf-chips-row';
-  (r.matched_skills || []).forEach(s => {
-    const c = document.createElement('span');
-    c.className = 'jf-chip-match hit'; c.textContent = '✓ ' + s; chipRow.appendChild(c);
-  });
-  (r.partial_skills || []).forEach(s => {
-    const c = document.createElement('span');
-    c.className = 'jf-chip-match partial'; c.textContent = '~ ' + s; chipRow.appendChild(c);
-  });
-  (r.missing_skills || []).forEach(s => {
-    const c = document.createElement('span');
-    c.className = 'jf-chip-match miss'; c.textContent = '✗ ' + s; chipRow.appendChild(c);
-  });
-  skillSec.appendChild(chipRow);
+
+  if (allSkills.length > 0) {
+    skillSec.innerHTML = '<div class="jf-bk-title">Skill Coverage</div>';
+    const chipRow = document.createElement('div');
+    chipRow.className = 'jf-chips-row';
+    allSkills.forEach(({ label, cls, prefix }) => {
+      const c = document.createElement('span');
+      c.className = 'jf-chip-match ' + cls;
+      c.textContent = prefix + label;
+      chipRow.appendChild(c);
+    });
+    skillSec.appendChild(chipRow);
+  } else {
+    skillSec.innerHTML = '<div class="jf-bk-title" style="color:var(--muted)">Skill coverage data unavailable — try again</div>';
+  }
   bd.appendChild(skillSec);
 
-  if (r.gaps?.length) {
+  // Gaps
+  if (r.gaps && r.gaps.length) {
     const gapSec = document.createElement('div');
     gapSec.className = 'jf-bk-section';
     gapSec.style.marginTop = '1rem';
     gapSec.innerHTML = '<div class="jf-bk-title">Gaps / Considerations</div>';
-    const gr = document.createElement('div');
-    gr.style.cssText = 'display:flex;flex-direction:column;gap:.3rem';
     r.gaps.forEach(g => {
       const d = document.createElement('div');
-      d.style.cssText = 'font-size:.78rem;color:#ef476f;opacity:.8';
+      d.style.cssText = 'font-size:.78rem;color:#ef476f;opacity:.8;padding:.2rem 0';
       d.textContent = '• ' + g;
-      gr.appendChild(d);
+      gapSec.appendChild(d);
     });
-    gapSec.appendChild(gr);
     bd.appendChild(gapSec);
   }
-
-  // Cover letter
-  if (r.cover_letter) {
-    const cw = document.getElementById('jfCoverWrap');
-    const cl = document.getElementById('jfCoverLetter');
-    cw.style.display = 'block';
-    cl.textContent = r.cover_letter;
-  }
 }
+
 
 function copyCoverLetter() {
   const text = document.getElementById('jfCoverLetter')?.textContent;
