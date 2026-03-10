@@ -1,0 +1,9 @@
+{
+  "name": "jay-shah-portfolio",
+  "version": "1.0.0",
+  "description": "Jay Shah — Software Developer Portfolio with AI Assistant",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}
