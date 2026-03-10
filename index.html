@@ -2726,7 +2726,7 @@ Return ONLY this JSON (no markdown, no extra text, no apostrophes in strings):
   "gaps": ["No Java experience mentioned"]
 }`;
 
-    const r1 = await callAI(analysisPrompt);
+    const r1 = await callAI(analysisPrompt, { maxTokens: 1200, temperature: 0.1 });
     const analysis = parseAnalysis(r1);
 
     // Render score + skills immediately so user sees progress
@@ -2750,15 +2750,21 @@ Write exactly 3 paragraphs. Start with "Dear Hiring Manager,". End with "Sincere
 Reference 2-3 specific requirements from the job description.
 Professional tone. Do NOT mention university or degrees. Plain text only.`;
 
-    const r2 = await callAI(clPrompt);
+    const r2 = await callAI(clPrompt, { maxTokens: 1500, temperature: 0.4 });
     const coverLetter = r2.trim();
 
     // Append cover letter to already-rendered results
-    if (coverLetter && coverLetter.length > 50) {
-      const cw = document.getElementById('jfCoverWrap');
-      const cl = document.getElementById('jfCoverLetter');
+    const cw = document.getElementById('jfCoverWrap');
+    const cl = document.getElementById('jfCoverLetter');
+    if (cw && cl && coverLetter && coverLetter.length > 50) {
+      // Replace \n literals with actual newlines in case Gemini returned escaped ones
+      const formatted = coverLetter.replace(/\\n/g, '\n');
+      cl.textContent = formatted;
+      cw.style.display = 'block';
+    } else if (!coverLetter || coverLetter.length <= 50) {
+      // Show a fallback message so user knows it failed
       if (cw && cl) {
-        cl.textContent = coverLetter;
+        cl.textContent = 'Cover letter generation failed. Please try again.';
         cw.style.display = 'block';
       }
     }
@@ -2776,17 +2782,23 @@ Professional tone. Do NOT mention university or degrees. Plain text only.`;
   }
 }
 
-async function callAI(userPrompt) {
+async function callAI(userPrompt, opts) {
+  opts = opts || {};
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      system: 'You are a technical recruiter AI. Follow the output format exactly as instructed.',
-      messages: [{ role: 'user', content: userPrompt }]
+      system: opts.system || 'You are a technical recruiter AI. Follow the output format exactly as instructed.',
+      messages: [{ role: 'user', content: userPrompt }],
+      maxTokens:   opts.maxTokens   || 2048,
+      temperature: opts.temperature ?? 0.2,
     })
   });
   if (!res.ok) throw new Error('API error: ' + res.status);
   const data = await res.json();
+  if (data.finishReason && data.finishReason !== 'STOP') {
+    console.warn('Response was truncated. finishReason:', data.finishReason);
+  }
   return data.reply || '';
 }
 

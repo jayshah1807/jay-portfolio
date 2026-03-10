@@ -1,7 +1,6 @@
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
@@ -38,7 +37,7 @@ export default async function handler(req) {
     });
   }
 
-  const { system, messages } = body;
+  const { system, messages, maxTokens, temperature } = body;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return new Response(JSON.stringify({ error: 'No messages provided.' }), {
@@ -47,7 +46,6 @@ export default async function handler(req) {
     });
   }
 
-  // Convert to Gemini format — roles are "user" and "model" (not "assistant")
   const geminiContents = messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
@@ -59,8 +57,8 @@ export default async function handler(req) {
     },
     contents: geminiContents,
     generationConfig: {
-      maxOutputTokens: 1000,
-      temperature: 0.7,
+      maxOutputTokens: maxTokens || 2048,   // caller sets this; default raised to 2048
+      temperature: temperature ?? 0.3,       // default lowered to 0.3 for consistent output
     },
   };
 
@@ -84,9 +82,16 @@ export default async function handler(req) {
     }
 
     const data = await geminiRes.json();
+
+    // Log finish reason so we can detect truncation
+    const finishReason = data.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      console.warn('Gemini finish reason:', finishReason);
+    }
+
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No response received.';
 
-    return new Response(JSON.stringify({ reply }), {
+    return new Response(JSON.stringify({ reply, finishReason }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
