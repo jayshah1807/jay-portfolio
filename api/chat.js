@@ -13,7 +13,6 @@ export default async function handler(req) {
     });
   }
 
-  // Only allow POST
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -48,31 +47,32 @@ export default async function handler(req) {
     });
   }
 
-  // Convert OpenAI-style messages to Gemini's { role, parts } format
-  // Gemini uses "model" instead of "assistant"
-  const geminiMessages = messages.map((msg) => ({
-    role: msg.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: msg.content }],
+  // Convert to Gemini format — roles are "user" and "model" (not "assistant")
+  const geminiContents = messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
   }));
 
-  const geminiPayload = {
-    system_instruction: system ? { parts: [{ text: system }] } : undefined,
-    contents: geminiMessages,
+  const geminiBody = {
+    system_instruction: {
+      parts: [{ text: system || '' }],
+    },
+    contents: geminiContents,
     generationConfig: {
       maxOutputTokens: 1000,
       temperature: 0.7,
     },
   };
 
-  const GEMINI_MODEL = 'gemini-flash-latest';
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-
   try {
-    const geminiRes = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(geminiPayload),
-    });
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geminiBody),
+      }
+    );
 
     if (!geminiRes.ok) {
       const err = await geminiRes.text();

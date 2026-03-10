@@ -2672,18 +2672,17 @@ AWS Cloud Practitioner, Google Go Certified, Digital Marketing
 `;
 
 async function runJobFit() {
-  const input = document.getElementById('jfInput');
-  const btn = document.getElementById('jfBtn');
-  const btnText = document.querySelector('.jf-btn-text');
-  const loader = document.getElementById('jfLoader');
-  const results = document.getElementById('jfResults');
+  const input    = document.getElementById('jfInput');
+  const btn      = document.getElementById('jfBtn');
+  const btnText  = document.querySelector('.jf-btn-text');
+  const loader   = document.getElementById('jfLoader');
+  const results  = document.getElementById('jfResults');
   const placeholder = document.getElementById('jfPlaceholder');
 
   const jd = input.value.trim();
   if (!jd || jd.length < 50) {
     input.style.borderColor = '#ef476f';
     setTimeout(() => input.style.borderColor = '', 1500);
-    input.placeholder = 'Please paste a job description (at least 50 characters)...';
     return;
   }
 
@@ -2693,67 +2692,83 @@ async function runJobFit() {
   results.style.display = 'none';
   placeholder.style.display = 'none';
 
-  const prompt = `You are an expert technical recruiter. Analyze how well this candidate fits the job description.
+  try {
+    // ── CALL 1: structured analysis (score + skills + highlights) ──
+    const analysisPrompt = `You are a technical recruiter. Analyze candidate fit for this job.
 
-CANDIDATE PROFILE:
-${JAY_PROFILE}
+CANDIDATE: Jay Shah, Software Developer, 3+ years experience at Crest Data building Google Chronicle SIEM/SOAR platform.
+
+KEY EXPERIENCE:
+- Migrated 50+ REST endpoints to gRPC/TypeScript on Google Chronicle (zero downtime)
+- Built Angular component test harness for SIEM/SOAR (Parsers, UDM Search, Alerts, IOCs)
+- Automated CI/CD with Python/Shell/GitLab CI — cut release validation from hours to ~1hr
+- Deployed ArgoCD pipelines — eliminated 3-4hr upgrade windows via parallel rollouts
+- Built Splunk SPL dashboards for enterprise security operations
+- Refactored Angular data layer reducing API response times significantly
+
+SKILLS: Python, TypeScript, JavaScript, Go, Angular, React, gRPC, REST APIs, Node.js, AWS, Docker, Kubernetes, GitLab CI, ArgoCD, Linux, RTOS, Google Chronicle, SIEM, SOAR, Splunk SPL, UDM Search, Shell Script, SQL, Git
 
 JOB DESCRIPTION:
 ${jd}
 
-OUTPUT RULES - follow exactly:
-1. Return ONLY a JSON object. Zero text before or after it.
-2. No markdown code fences.
-3. cover_letter: use literal \n for line breaks. No actual newlines inside the string value.
-4. No apostrophes inside string values - use "cannot" not "can't", "does not" not "doesn't".
-5. Keep cover_letter under 400 words.
+Return ONLY this JSON (no markdown, no extra text, no apostrophes in strings):
+{
+  "score": 82,
+  "verdict": "Strong Match - Production SIEM experience aligns directly",
+  "verdict_color": "green",
+  "matched_skills": ["Python", "TypeScript", "gRPC"],
+  "partial_skills": ["React"],
+  "missing_skills": ["Java"],
+  "match_highlights": [
+    "Led gRPC migration of 50+ endpoints matching distributed systems requirement",
+    "3 years production SIEM/SOAR matches security platform experience needed"
+  ],
+  "gaps": ["No Java experience mentioned"]
+}`;
 
-{"score":<0-100>,"verdict":"<one line verdict>","verdict_color":"<green or gold or red>","matched_skills":["skill1","skill2"],"partial_skills":["skill1"],"missing_skills":["skill1"],"match_highlights":["highlight1","highlight2"],"gaps":["gap1"],"cover_letter":"Dear Hiring Manager,\n\n<paragraph1>\n\n<paragraph2>\n\n<paragraph3>\n\nSincerely,\nJay Shah"}`;
+    const r1 = await callAI(analysisPrompt);
+    const analysis = parseAnalysis(r1);
 
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system: 'You are a technical recruiter AI. You MUST respond with valid RFC8259-compliant JSON only. No markdown fences. No text outside the JSON object. Escape all special characters inside string values including apostrophes, quotes and newlines.',
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const data = await res.json();
-    let raw = data.reply || '';
+    // Render score + skills immediately so user sees progress
+    renderJobFit(analysis);
 
-    // ── Robust JSON extraction ────────────────────────────────
-    // 1. Strip markdown fences
-    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/,'').trim();
+    // ── CALL 2: cover letter separately ──────────────────────
+    const clPrompt = `Write a professional cover letter for Jay Shah applying to this job.
 
-    // 2. Extract just the outer { ... } object
-    const firstBrace = raw.indexOf('{');
-    const lastBrace  = raw.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      raw = raw.slice(firstBrace, lastBrace + 1);
+JAY SHAH BACKGROUND (use only these facts — do NOT mention education):
+- 3+ years at Crest Data building Google Chronicle SIEM/SOAR for enterprise clients
+- Migrated 50+ endpoints from REST to gRPC/TypeScript with zero downtime
+- Built automated CI/CD pipelines (Python, GitLab CI, ArgoCD) cutting release time 80%
+- Engineered Angular test harness covering Parsers, UDM Search, Alerts, IOCs
+- Built Splunk SPL dashboards for security operations monitoring
+- Tech stack: Python, TypeScript, Angular, gRPC, AWS, Docker, K8s, Linux, GitLab CI
+
+JOB DESCRIPTION:
+${jd}
+
+Write exactly 3 paragraphs. Start with "Dear Hiring Manager,". End with "Sincerely,\nJay Shah".
+Reference 2-3 specific requirements from the job description.
+Professional tone. Do NOT mention university or degrees. Plain text only.`;
+
+    const r2 = await callAI(clPrompt);
+    const coverLetter = r2.trim();
+
+    // Append cover letter to already-rendered results
+    if (coverLetter && coverLetter.length > 50) {
+      const cw = document.getElementById('jfCoverWrap');
+      const cl = document.getElementById('jfCoverLetter');
+      if (cw && cl) {
+        cl.textContent = coverLetter;
+        cw.style.display = 'block';
+      }
     }
 
-    // 3. Try direct parse first
-    let result;
-    try {
-      result = JSON.parse(raw);
-    } catch(parseErr) {
-      // 4. Attempt to salvage: extract fields we need via regex
-      // so a broken cover_letter doesn't kill everything
-      console.warn('JSON parse failed, attempting field extraction:', parseErr.message);
-      result = extractFieldsFallback(raw);
-    }
-
-    if (!result || typeof result.score === 'undefined') {
-      throw new Error('Could not parse AI response');
-    }
-    renderJobFit(result);
   } catch(e) {
     console.error('Job fit error:', e);
     placeholder.style.display = 'block';
-    placeholder.innerHTML = '<div class="jf-placeholder-icon">⚠️</div>' +
-      '<div class="jf-placeholder-text">Analysis failed</div>' +
-      '<div class="jf-placeholder-sub" style="color:#ef476f;margin-top:.5rem;font-family:monospace;font-size:.75rem">' + e.message + '</div>';
+    placeholder.innerHTML = '<div class="jf-placeholder-icon">⚠️</div>'
+      + '<div class="jf-placeholder-text">Analysis failed</div>'
+      + '<div class="jf-placeholder-sub" style="color:#ef476f;margin-top:.5rem;font-family:monospace;font-size:.75rem">' + e.message + '</div>';
   } finally {
     btn.disabled = false;
     btnText.style.display = 'inline';
@@ -2761,8 +2776,64 @@ OUTPUT RULES - follow exactly:
   }
 }
 
-// Regex-based field extractor — handles when LLM produces near-valid JSON
-// with only the cover_letter string broken by unescaped quotes/newlines
+async function callAI(userPrompt) {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system: 'You are a technical recruiter AI. Follow the output format exactly as instructed.',
+      messages: [{ role: 'user', content: userPrompt }]
+    })
+  });
+  if (!res.ok) throw new Error('API error: ' + res.status);
+  const data = await res.json();
+  return data.reply || '';
+}
+
+function parseAnalysis(raw) {
+  // Strip markdown fences
+  let s = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  // Extract { ... }
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a !== -1 && b !== -1) s = s.slice(a, b + 1);
+
+  // Try direct parse
+  try {
+    const obj = JSON.parse(s);
+    // Validate we got arrays back
+    if (!Array.isArray(obj.matched_skills)) obj.matched_skills = [];
+    if (!Array.isArray(obj.partial_skills))  obj.partial_skills = [];
+    if (!Array.isArray(obj.missing_skills))  obj.missing_skills = [];
+    if (!Array.isArray(obj.match_highlights)) obj.match_highlights = [];
+    if (!Array.isArray(obj.gaps))            obj.gaps = [];
+    return obj;
+  } catch(e) {
+    console.warn('Direct parse failed, using fallback. Error:', e.message);
+    console.warn('Raw response:', raw.substring(0, 500));
+  }
+
+  // Regex fallback
+  const getNum = k => { const m = s.match(new RegExp('"' + k + '"\\s*:\\s*(\\d+)')); return m ? parseInt(m[1]) : 0; };
+  const getStr = k => { const m = s.match(new RegExp('"' + k + '"\\s*:\\s*"([^"]*)"')); return m ? m[1] : ''; };
+  const getArr = k => {
+    const m = s.match(new RegExp('"' + k + '"\\s*:\\s*\\[([\\s\\S]*?)\\]'));
+    if (!m) return [];
+    return (m[1].match(/"((?:[^"\\]|\\.)*)"/g) || []).map(x => x.replace(/^"|"$/g,'').replace(/\\"/g,'"'));
+  };
+  return {
+    score:            getNum('score') || 70,
+    verdict:          getStr('verdict') || 'Analysis Complete',
+    verdict_color:    getStr('verdict_color') || 'gold',
+    matched_skills:   getArr('matched_skills'),
+    partial_skills:   getArr('partial_skills'),
+    missing_skills:   getArr('missing_skills'),
+    match_highlights: getArr('match_highlights'),
+    gaps:             getArr('gaps'),
+    cover_letter:     '',
+  };
+}
+
+
 function extractFieldsFallback(raw) {
   function getNum(key) {
     const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*(\\d+)'));
