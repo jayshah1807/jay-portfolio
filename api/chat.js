@@ -1,6 +1,18 @@
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+    });
+  }
+
   // Only allow POST
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -9,7 +21,7 @@ export default async function handler(req) {
     });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'API key not configured.' }), {
       status: 500,
@@ -36,33 +48,38 @@ export default async function handler(req) {
     });
   }
 
+  // Build OpenAI messages array — system prompt goes as first message with role "system"
+  const openAiMessages = [
+    { role: 'system', content: system || '' },
+    ...messages,
+  ];
+
   try {
-    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+    const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'gpt-4o',
         max_tokens: 1000,
-        system: system || '',
-        messages,
+        temperature: 0.7,
+        messages: openAiMessages,
       }),
     });
 
-    if (!anthropicRes.ok) {
-      const err = await anthropicRes.text();
-      console.error('Anthropic error:', err);
+    if (!openAiRes.ok) {
+      const err = await openAiRes.text();
+      console.error('OpenAI error:', err);
       return new Response(JSON.stringify({ error: 'AI service error. Try again shortly.' }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const data = await anthropicRes.json();
-    const reply = data.content?.[0]?.text ?? 'No response received.';
+    const data = await openAiRes.json();
+    const reply = data.choices?.[0]?.message?.content ?? 'No response received.';
 
     return new Response(JSON.stringify({ reply }), {
       status: 200,
