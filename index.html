@@ -2701,42 +2701,99 @@ ${JAY_PROFILE}
 JOB DESCRIPTION:
 ${jd}
 
-Respond ONLY with a valid JSON object, no markdown, no extra text:
-{
-  "score": <integer 0-100>,
-  "verdict": "<one punchy line verdict, e.g. 'Strong Match — Highly Recommended'>",
-  "verdict_color": "<'green' | 'gold' | 'red'>",
-  "matched_skills": ["skill1", "skill2", ...],
-  "partial_skills": ["skill1", ...],
-  "missing_skills": ["skill1", ...],
-  "match_highlights": ["specific experience that directly maps to a requirement", ...],
-  "gaps": ["gap1", ...],
-  "cover_letter": "<professional 3-paragraph cover letter from Jay's perspective, referencing specific JD requirements and Jay's matching experience. Do NOT mention education. Start with 'Dear Hiring Manager,'>"
-}`;
+OUTPUT RULES - follow exactly:
+1. Return ONLY a JSON object. Zero text before or after it.
+2. No markdown code fences.
+3. cover_letter: use literal \n for line breaks. No actual newlines inside the string value.
+4. No apostrophes inside string values - use "cannot" not "can't", "does not" not "doesn't".
+5. Keep cover_letter under 400 words.
+
+{"score":<0-100>,"verdict":"<one line verdict>","verdict_color":"<green or gold or red>","matched_skills":["skill1","skill2"],"partial_skills":["skill1"],"missing_skills":["skill1"],"match_highlights":["highlight1","highlight2"],"gaps":["gap1"],"cover_letter":"Dear Hiring Manager,\n\n<paragraph1>\n\n<paragraph2>\n\n<paragraph3>\n\nSincerely,\nJay Shah"}`;
 
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        system: 'You are a technical recruiter AI. Always respond with valid JSON only.',
+        system: 'You are a technical recruiter AI. You MUST respond with valid RFC8259-compliant JSON only. No markdown fences. No text outside the JSON object. Escape all special characters inside string values including apostrophes, quotes and newlines.',
         messages: [{ role: 'user', content: prompt }]
       })
     });
     const data = await res.json();
-    const raw = data.reply || '';
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const result = JSON.parse(clean);
+    let raw = data.reply || '';
+
+    // ── Robust JSON extraction ────────────────────────────────
+    // 1. Strip markdown fences
+    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/,'').trim();
+
+    // 2. Extract just the outer { ... } object
+    const firstBrace = raw.indexOf('{');
+    const lastBrace  = raw.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      raw = raw.slice(firstBrace, lastBrace + 1);
+    }
+
+    // 3. Try direct parse first
+    let result;
+    try {
+      result = JSON.parse(raw);
+    } catch(parseErr) {
+      // 4. Attempt to salvage: extract fields we need via regex
+      // so a broken cover_letter doesn't kill everything
+      console.warn('JSON parse failed, attempting field extraction:', parseErr.message);
+      result = extractFieldsFallback(raw);
+    }
+
+    if (!result || typeof result.score === 'undefined') {
+      throw new Error('Could not parse AI response');
+    }
     renderJobFit(result);
   } catch(e) {
     console.error('Job fit error:', e);
     placeholder.style.display = 'block';
-    placeholder.innerHTML = '<div class="jf-placeholder-icon">⚠️</div><div class="jf-placeholder-text">Analysis failed — check your API key is set in Vercel</div>';
+    placeholder.innerHTML = '<div class="jf-placeholder-icon">⚠️</div>' +
+      '<div class="jf-placeholder-text">Analysis failed</div>' +
+      '<div class="jf-placeholder-sub" style="color:#ef476f;margin-top:.5rem;font-family:monospace;font-size:.75rem">' + e.message + '</div>';
   } finally {
     btn.disabled = false;
     btnText.style.display = 'inline';
     loader.style.display = 'none';
   }
+}
+
+// Regex-based field extractor — handles when LLM produces near-valid JSON
+// with only the cover_letter string broken by unescaped quotes/newlines
+function extractFieldsFallback(raw) {
+  function getNum(key) {
+    const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*(\\d+)'));
+    return m ? parseInt(m[1]) : 0;
+  }
+  function getStr(key) {
+    // grab value between first quote pair after the key
+    const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*"([^"]*)"'));
+    return m ? m[1] : '';
+  }
+  function getArr(key) {
+    const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*\\[([^\\]]*?)\\]'));
+    if (!m) return [];
+    return (m[1].match(/"([^"]*)"/g) || []).map(s => s.replace(/"/g,''));
+  }
+  // For cover_letter grab everything between cover_letter": " and the next "}
+  let cover = '';
+  const clMatch = raw.match(/"cover_letter"\s*:\s*"([\s\S]*?)(?="\s*\})/);
+  if (clMatch) cover = clMatch[1].replace(/\n/g,'\n');
+
+  return {
+    score:            getNum('score'),
+    verdict:          getStr('verdict') || 'Analysis complete',
+    verdict_color:    getStr('verdict_color') || 'gold',
+    matched_skills:   getArr('matched_skills'),
+    partial_skills:   getArr('partial_skills'),
+    missing_skills:   getArr('missing_skills'),
+    match_highlights: getArr('match_highlights'),
+    gaps:             getArr('gaps'),
+    cover_letter:     cover,
+  };
 }
 
 function renderJobFit(r) {
